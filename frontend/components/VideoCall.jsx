@@ -7,8 +7,10 @@ class VideoCall extends React.Component{
     super(props);
     this.pcPeers = {};
     this.userId = Math.floor(Math.random() * 10000);
+
   }
   componentDidMount(){
+    this.remoteVideoContainer = document.getElementById("remote-video-container")
     navigator.mediaDevices.getUserMedia( { audio: false, video: true })
     .then(stream => {
         this.localStream = stream;
@@ -16,18 +18,25 @@ class VideoCall extends React.Component{
     }).catch(error => { console.log(error) });
   }
   joinCall(e){
+    
     App.cable.subscriptions.create(
-        { channel: "VideoChannel" },
+        { channel: "CallChannel" },
     { connected: () => {
+        console.log('CONNECTED');
+
         broadcastData({ type: JOIN_CALL, from: this.userId });
     },
         received: data => {
+
+            console.log("RECEIVED: ", data);
+
             if (data.from === this.userId) return;
+
             switch (data.type) {
                 case JOIN_CALL:
                     return this.join(data);
                 case EXCHANGE:
-                    if (data.to !== me) return;
+                    if (data.to !== this.userId) return;
                     return this.exchange(data);
                 case LEAVE_CALL:
                     return this.removeUser(data);
@@ -38,24 +47,28 @@ class VideoCall extends React.Component{
     });  
   }
   
-  exchange(data){}
   join(data){
     this.createPC(data.from, true)
   }
   removeUser(data){}
+  
   createPC(userId, offerBool){
     const pc = new RTCPeerConnection(ice);
+
     this.pcPeers[userId] = pc;
     this.localStream.getTracks().forEach(track => pc.addTrack(track, this.localStream));
     if (offerBool) {
         pc.createOffer().then(offer => {
             pc.setLocalDescription(offer).then(() => {
-                broadcastData({
-                    type: EXCHANGE,
-                    from: this.userId,
-                    to: userId,
-                    sdp: JSON.stringify(pc.localDescription),
-                })
+                setTimeout( ()=>{
+                    broadcastData({
+                        type: EXCHANGE,
+                        from: this.userId,
+                        to: userId,
+                        sdp: JSON.stringify(pc.localDescription),
+                    })
+
+                }, 0);
             })
         })
     }
@@ -84,17 +97,49 @@ class VideoCall extends React.Component{
     }
     return pc;
   };
+  leaveCall(){}
     
   
-  exchange(data){
-      
+  exchange(data) {
+    let pc;
+    if (this.pcPeers[data.from]) {
+        pc = this.pcPeers[data.from];
+    } else {
+        pc = this.createPC(data.from, false);
+    }
+    if (data.candidate) {
+        let candidate = JSON.parse(data.candidate)
+        pc.addIceCandidate(new RTCIceCandidate(candidate))
+    }
+    if (data.sdp) {
+        const sdp = JSON.parse(data.sdp);
+        if (sdp && !sdp.candidate) {
+            pc.setRemoteDescription(sdp).then(() => {
+                if (sdp.type === 'offer') {
+                    pc.createAnswer().then(answer => {
+                        pc.setLocalDescription(answer)
+                            .then(() => {
+
+                                    broadcastData({
+                                        type: EXCHANGE,
+                                        from: this.userId,
+                                        to: data.from,
+                                        sdp: JSON.stringify(pc.localDescription)
+                                    });
+
+                            })
+                    })
+                }
+            })
+        }
+    }
   }
     render(){
         return(<div className="VideoCall">
                     <div id="remote-video-container"></div>
                     <video id="local-video" autoPlay></video>
-                    <button onClick={this.joinCall}>Join Call</button>
-                    <button onClick={this.leaveCall}>Leave Call</button>
+                    <button onClick={this.joinCall.bind(this)}>Join Call</button>
+                    <button onClick={this.leaveCall.bind(this)}>Leave Call</button>
                 </div>)
     }
 }

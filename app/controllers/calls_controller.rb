@@ -7,6 +7,6 @@ class CallsController < ApplicationController
   private
   
   def call_params
-    params.permit(:type, :from, :to, :sdp)
+    params.permit(:call, :type, :from, :to, :sdp, :candida)
   end
 end
