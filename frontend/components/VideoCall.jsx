@@ -50,7 +50,13 @@ class VideoCall extends React.Component{
   join(data){
     this.createPC(data.from, true)
   }
-  removeUser(data){}
+  removeUser(data){
+      let video = document.getElementById(`remoteVideoContainer+${data.from}`);
+      video && video.remove();
+
+      let peers = this.pcPeers
+      delete peers[data.from]
+  }
   
   createPC(userId, offerBool){
     const pc = new RTCPeerConnection(ice);
@@ -97,7 +103,23 @@ class VideoCall extends React.Component{
     }
     return pc;
   };
-  leaveCall(){}
+  leaveCall(e){
+      const pcKeys = Object.keys(this.pcPeers);
+      for (let i = 0; i < pcKeys.length; i++) {
+          this.pcPeers[pcKeys[i]].close();
+      }
+      this.pcPeers = {};
+      this.localVideo.srcObject.getTracks().forEach(function (track) {
+          track.stop();
+      })
+      this.localVideo.srcObject = null;
+      App.cable.subscriptions.subscriptions = [];
+      this.remoteVideoContainer.innerHTML = "";
+        broadcastData({
+            type: LEAVE_CALL,
+            from: this.userId
+        });
+  }
     
   
   exchange(data) {
